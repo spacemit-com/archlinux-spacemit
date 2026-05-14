@@ -1,0 +1,22 @@
+#!/bin/bash
+# mkinitcpio install hook for ESOS firmware
+
+build() {
+    local _esos_dir="/usr/lib/esos"
+
+    for _elf in rt24_os0_rcpu.elf rt24_os1_rcpu.elf; do
+        if [[ -f "${_esos_dir}/${_elf}" ]]; then
+            add_file "${_esos_dir}/${_elf}" "/lib/firmware/${_elf}"
+        else
+            warning "ESOS firmware ${_elf} not found, skipping"
+        fi
+    done
+}
+
+help() {
+    cat <<HELPEOF
+This hook includes ESOS (Energy Service OS) firmware files
+(rt24_os0_rcpu.elf, rt24_os1_rcpu.elf) into the initramfs
+so they are available at early boot on SpacemiT platforms.
+HELPEOF
+}

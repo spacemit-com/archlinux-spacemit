@@ -1,0 +1,219 @@
+#!/bin/sh
+set -e
+
+# returns 0 if running in chroot, 1 if not
+running_in_chroot() {
+    if [ "${SYSTEMD_IGNORE_CHROOT:-0}" = "1" ]; then
+        return 1
+    fi
+
+    if [ -e "/proc/1/root" ]; then
+        root_dev_ino=$(stat -c '%d:%i' / 2>/dev/null) || return 0
+        proc1_root_dev_ino=$(stat -L -c '%d:%i' /proc/1/root 2>/dev/null) || return 0
+
+        [ "$root_dev_ino" = "$proc1_root_dev_ino" ] && return 1 || return 0
+    fi
+
+    if [ ! -d "/proc" ] || [ ! -r "/proc/version" ]; then
+        [ "$$" = "1" ] && return 1 || return 0
+    fi
+
+    return 0
+}
+
+install_opensbi() {
+    target=""
+    if grep -q 'Spacemit(R) X100' /proc/cpuinfo; then
+        target="spacemit"
+    else
+        echo "Running not in Spacemit X100, skipping install opensbi to bootloader partition."
+        return 0
+    fi
+
+    if running_in_chroot; then
+        echo "Running in chroot, skipping install opensbi to bootloader partition."
+        return 0
+    fi
+
+    BOOT_MODE=""
+    for x in $(cat /proc/cmdline); do
+        case $x in
+        root=UUID=*)
+            ROOT=${x#root=UUID=}
+            DEVICES=$(blkid -s UUID | grep "$ROOT" | awk '{print $1}')
+            DEVICE_COUNT=$(echo "$DEVICES" | wc -l)
+            if [ "$DEVICE_COUNT" -gt 1 ]; then
+                echo "Warning: Multiple devices found with the same UUID $ROOT:"
+                echo "$DEVICES"
+                echo "This may cause installation issues. Please ensure unique UUIDs."
+                return 0
+            fi
+            ROOT=$(echo "$DEVICES" | head -n1)
+            ;;
+        root=*)
+            ROOT=${x#root=}
+            ;;
+        boot_mode=*)
+            BOOT_MODE=${x#boot_mode=}
+            ;;
+        esac
+    done
+
+    # 根据boot_mode获取启动介质设备
+    get_boot_device_from_mode() {
+        local mode=$1
+        case $mode in
+        emmc)
+            echo "/dev/mmcblk2"
+            ;;
+        sdcard)
+            echo "/dev/mmcblk0"
+            ;;
+        nor)
+            if [ -e "/dev/mtdblock0" ]; then
+                echo "/dev/mtdblock0"
+            else
+                echo ""
+            fi
+            ;;
+        nand)
+            # NAND设备也使用MTD子系统，通常是/dev/mtdblock0
+            if [ -e "/dev/mtdblock0" ]; then
+                echo "/dev/mtdblock0"
+            else
+                echo ""
+            fi
+            ;;
+        ufs)
+            echo "/dev/sda"
+            ;;
+        *)
+            echo ""
+            ;;
+        esac
+    }
+
+    # 从rootfs设备路径获取基础设备
+    get_base_device() {
+        local dev=$1
+        case $dev in
+        "/dev/mmcblk0"*)
+            echo "/dev/mmcblk0"
+            ;;
+        "/dev/mmcblk2"*)
+            echo "/dev/mmcblk2"
+            ;;
+        "/dev/sda"*)
+            echo "/dev/sda"
+            ;;
+        "/dev/nvme0n1"*)
+            echo "/dev/nvme0n1"
+            ;;
+        *)
+            echo ""
+            ;;
+        esac
+    }
+
+    # 确定目标设备：如果有boot_mode且与rootfs设备不同，使用启动设备；否则使用rootfs设备
+    TARGET_DEVICE=""
+    if [ -n "$BOOT_MODE" ]; then
+        BOOT_DEVICE=$(get_boot_device_from_mode "$BOOT_MODE")
+        if [ -n "$BOOT_DEVICE" ] && [ -n "$ROOT" ]; then
+            ROOT_BASE_DEVICE=$(get_base_device "$ROOT")
+            # 比较启动设备和rootfs基础设备
+            if [ "$BOOT_DEVICE" != "$ROOT_BASE_DEVICE" ]; then
+                TARGET_DEVICE="$BOOT_DEVICE"
+                echo "Boot device ($BOOT_MODE -> $BOOT_DEVICE) differs from rootfs device ($ROOT_BASE_DEVICE), using boot device."
+            else
+                TARGET_DEVICE="$ROOT_BASE_DEVICE"
+                echo "Boot device matches rootfs device, using $TARGET_DEVICE."
+            fi
+        elif [ -n "$BOOT_DEVICE" ]; then
+            TARGET_DEVICE="$BOOT_DEVICE"
+            echo "Using boot device from boot_mode=$BOOT_MODE: $TARGET_DEVICE"
+        else
+            echo "Unsupported boot_mode=$BOOT_MODE, unable to determine boot device."
+            return 1
+        fi
+    fi
+
+    # 如果没有确定目标设备（无boot_mode或解析失败），使用原有逻辑
+    if [ -z "$TARGET_DEVICE" ] && [ -n "$ROOT" ]; then
+        TARGET_DEVICE=$(get_base_device "$ROOT")
+    fi
+
+    if [ -n "$TARGET_DEVICE" ]; then
+        case $TARGET_DEVICE in
+        "/dev/mmcblk0")
+            OPENSBI=/dev/mmcblk0
+            # 以KB为单位
+            OPENSBI_SEEK=7168
+            ;;
+        "/dev/mmcblk2")
+            OPENSBI=/dev/mmcblk2
+            # 以KB为单位
+            OPENSBI_SEEK=7168
+            ;;
+        "/dev/sda")
+            OPENSBI=/dev/sda
+            # 以KB为单位
+            OPENSBI_SEEK=7168
+            ;;
+        "/dev/mtdblock0")
+            OPENSBI=/dev/mtdblock0
+            # 以KB为单位
+            OPENSBI_SEEK=1728
+            ;;
+        "/dev/nvme0n1")
+            # 兼容无bootmode的情况
+            if [ -e "/dev/mtdblock5" ]; then
+                # nor + ssd
+                OPENSBI=/dev/mtdblock5
+                # 以KB为单位
+                OPENSBI_SEEK=0
+            elif [ -e "/dev/mtdblock0" ]; then
+                # nor + ssd
+                OPENSBI=/dev/mtdblock0
+                # 以KB为单位
+                OPENSBI_SEEK=1728
+            else
+                # emmc + ssd
+                OPENSBI=/dev/mmcblk2
+                # 以KB为单位
+                OPENSBI_SEEK=1728
+            fi
+            ;;
+        *)
+            echo "Unsupported target device=$TARGET_DEVICE"
+            return 1
+            ;;
+        esac
+    else
+        echo "Unable to determine target device (missing root= or boot_mode= in cmdline)"
+        return 1
+    fi
+
+    # 待检查文件列表
+    files="/usr/lib/riscv64-linux-gnu/opensbi/generic/fw_dynamic.itb $OPENSBI"
+    for file in $files; do
+        if [ ! -e "$file" ]; then
+            # 任意不存在则退出
+            echo "Missing $file"
+            return 1
+        fi
+    done
+
+    # 此前已经做了所有检查
+    set -x
+    dd if=/usr/lib/riscv64-linux-gnu/opensbi/generic/fw_dynamic.itb of=$OPENSBI seek=$OPENSBI_SEEK bs=1K && sync
+    set +x
+}
+
+post_install() {
+    install_opensbi
+}
+
+post_upgrade() {
+    install_opensbi
+}

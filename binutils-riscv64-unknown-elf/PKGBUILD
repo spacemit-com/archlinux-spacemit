@@ -1,0 +1,83 @@
+# Maintainer: Your Name <your@email.com>
+# Aligned with debian/binutils-riscv64-unknown-elf, provides cross binutils for bare-metal RISC-V
+
+_target=riscv64-unknown-elf
+_binutils_ver=2.46.0
+
+pkgname=binutils-${_target}
+pkgver=${_binutils_ver}
+pkgrel=1
+pkgdesc='GNU assembler, linker and binary utilities for bare-metal RISC-V processors'
+arch=('x86_64' 'riscv64')
+url='https://www.gnu.org/software/binutils/'
+license=('GPL-3.0-or-later' 'LGPL-3.0-or-later')
+depends=('glibc' 'zlib')
+makedepends=(
+  'bison'
+  'flex'
+  'gettext'
+  'texinfo'
+  'dejagnu'
+  'python'
+  'file'
+  'xz'
+  'zlib'
+)
+options=('!emptydirs' '!strip' 'staticlibs')
+
+CFLAGS="${CFLAGS//-Werror=format-security/}"
+CXXFLAGS="${CXXFLAGS//-Werror=format-security/}"
+
+source=(
+  "https://ftp.gnu.org/gnu/binutils/binutils-${_binutils_ver}.tar.xz"
+)
+sha256sums=(
+  'SKIP'
+)
+
+build() {
+  mkdir -p "${srcdir}/build"
+  cd "${srcdir}/build"
+
+  "${srcdir}/binutils-${_binutils_ver}/configure" \
+    --target=${_target} \
+    --prefix=/usr \
+    --bindir=/usr/bin \
+    --libdir=/usr/lib/${_target} \
+    --infodir=/usr/share/doc/${pkgname}/info \
+    --htmldir=/usr/share/doc/${pkgname}/html \
+    --pdfdir=/usr/share/doc/${pkgname}/pdf \
+    --mandir=/usr/share/man \
+    --disable-nls \
+    --disable-werror \
+    --enable-plugins \
+    --enable-interwork \
+    --with-system-zlib \
+    "--with-pkgversion=${pkgver}-${pkgrel}" \
+    --enable-deterministic-archives \
+    --enable-multilib
+
+  make -j"$(nproc)"
+}
+
+package() {
+  cd "${srcdir}/build"
+
+  make install DESTDIR="${pkgdir}"
+
+  rm -rf "${pkgdir}/usr/share/doc/${pkgname}/info"
+  rm -rf "${pkgdir}/usr/lib/bfd-plugins"
+  find "${pkgdir}" -name '*.la' -delete
+  install -d "${pkgdir}/usr/${_target}/bin"
+  for _tool in ar as ld ld.bfd nm objcopy objdump ranlib readelf strip; do
+    if [ -f "${pkgdir}/usr/bin/${_target}-${_tool}" ]; then
+      ln -sf "/usr/bin/${_target}-${_tool}" \
+        "${pkgdir}/usr/${_target}/bin/${_tool}"
+    fi
+  done
+
+  # Install license file
+  install -Dm644 "${srcdir}/binutils-${_binutils_ver}/COPYING3" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/COPYING3"
+}
+

@@ -1,0 +1,132 @@
+# Maintainer: Weizhi Li <weizhi.li@spacemit.com>
+
+pkgbase=uboot-spacemit
+pkgname=('u-boot-spacemit' 'u-boot-tools')
+_tag=k3-br-v1.0.0
+pkgver=${_tag//-/.}
+pkgrel=1
+pkgdesc='U-Boot bootloader for SpacemiT platform'
+arch=('riscv64')
+url='https://github.com/spacemit-com/uboot-2022.10'
+license=('GPL-2.0-or-later')
+depends=()
+makedepends=(
+  'bc'
+  'bison'
+  'dtc'                   # device-tree-compiler
+  'flex'
+  'gcc'
+  'git'
+  'gnutls'                # libgnutls28-dev
+  'make'
+  'ncurses'               # libncurses-dev
+  'openssl'               # libssl-dev
+  'opensbi'               # opensbi (>= 1.0)
+  'python'                # python3
+  'python-pyelftools'     # python3-pyelftools
+  'python-setuptools'     # python3-setuptools
+  'swig'
+  'util-linux-libs'       # uuid-dev (libuuid)
+)
+source=(
+  "uboot-spacemit::git+https://github.com/spacemit-com/uboot-2022.10.git#tag=${_tag}"
+)
+sha256sums=(
+  'SKIP'
+)
+
+prepare() {
+  cd "${srcdir}/${pkgbase}"
+  # Apply patches (if any)
+}
+
+build() {
+  cd "${srcdir}/${pkgbase}"
+
+  # Fully aligned with debian/rules build method: build directly in source tree
+  # This U-Boot version (2022.10) auto-compiles built-in dtc, no need to specify system dtc
+  make k3_defconfig
+
+  # Write local version number
+  sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-${pkgrel}\"/" .config
+
+  make -j"$(nproc)"
+  cp -f u-boot-env-default.bin env.bin
+}
+
+package_u-boot-spacemit() {
+  pkgdesc='A boot loader for SpacemiT systems'
+  install=u-boot-spacemit.install
+  depends=()
+
+  cd "${srcdir}/${pkgbase}"
+
+  # Install to /usr/lib/u-boot/spacemit (aligned with debian .install)
+  local _dest="${pkgdir}/usr/lib/u-boot/spacemit"
+  install -d "${_dest}"
+
+  [[ -f u-boot.itb ]] && install -Dm644 u-boot.itb "${_dest}/u-boot.itb"
+
+  for f in FSBL.bin bootinfo*.bin; do
+    [[ -e "${f}" ]] && install -Dm644 "${f}" "${_dest}/${f}"
+  done
+
+  [[ -f env.bin ]] && install -Dm644 env.bin "${_dest}/env.bin"
+
+  if [[ -f tools/logos/bianbu.bmp ]]; then
+    install -Dm644 tools/logos/bianbu.bmp "${pkgdir}/boot/bianbu.bmp"
+  fi
+}
+
+package_u-boot-tools() {
+  pkgdesc='Companion tools for Das U-Boot bootloader'
+  depends=('glibc' 'openssl')
+  optdepends=('dtc: device-tree compiler for FIT images')
+  provides=('uboot-tools')
+  conflicts=(
+    'uboot-tools'
+    'uboot-envtools'
+    'uboot-mkimage'
+  )
+  replaces=(
+    'uboot-envtools'
+    'uboot-mkimage'
+  )
+
+  cd "${srcdir}/${pkgbase}"
+
+  install -d "${pkgdir}/usr/bin"
+
+  # Tools are already compiled under source tree tools/ during main build
+  local _tools=(
+    mkimage
+    dumpimage
+    mkenvimage
+    mksunxiboot
+    fw_printenv
+    fw_setenv
+    envcrc
+    fdtgrep
+    fit_check_sign
+    fit_info
+    gen_eth_addr
+    gen_ethaddr_crc
+    img2srec
+    ifdtool
+    ifwitool
+    proftool
+    prelink-riscv
+  )
+
+  local _t
+  for _t in "${_tools[@]}"; do
+    if [[ -x "tools/${_t}" ]]; then
+      install -m755 "tools/${_t}" "${pkgdir}/usr/bin/${_t}"
+    fi
+  done
+
+  # fw_setenv is typically a symlink to fw_printenv
+  if [[ ! -e "${pkgdir}/usr/bin/fw_setenv" && -e "${pkgdir}/usr/bin/fw_printenv" ]]; then
+    ln -s fw_printenv "${pkgdir}/usr/bin/fw_setenv"
+  fi
+}

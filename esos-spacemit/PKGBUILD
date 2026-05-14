@@ -1,0 +1,102 @@
+pkgname=esos-spacemit
+_tag=k3-br-v1.0.0
+_lite_tag=${_tag}
+pkgver=${_tag//-/.}
+pkgrel=1
+pkgdesc='ESOS (Energy Service OS) for SpacemiT platforms'
+arch=('riscv64')
+url='https://github.com/spacemit-com/esos/tree/k3-br-v1.0.y'
+license=('Apache License 2.0')
+install=esos-spacemit.install
+depends=()
+makedepends=(
+  'python'
+  'scons'
+  'uboot-tools'
+  'dtc'
+  'make'
+  'git'
+  'gcc-riscv64-unknown-elf'         # gcc-riscv64-unknown-elf
+  'libnewlib-riscv64-unknown-elf'   # libnewlib-riscv64-unknown-elf
+  # 'riscv64-elf-gcc'
+  # 'riscv64-elf-newlib'
+)
+
+source=(
+  "esos::git+https://github.com/spacemit-com/esos.git#tag=${_tag}"
+  "esos-lite::git+https://github.com/spacemit-com/esos-lite.git#tag=${_lite_tag}"
+)
+sha256sums=(
+  'SKIP'
+  'SKIP'
+)
+
+prepare() {
+  cd "${srcdir}/esos"
+
+  # Pre-build: prepare components/esos-lite
+  install -d components
+  rm -rf components/esos-lite
+  cp -a "${srcdir}/esos-lite" components/esos-lite
+
+  # Aligned with debian/rules override_dh_auto_configure
+  local _bsp_dir="${PWD}/bsp/spacemit"
+  echo 'export TOP_TARGET_CHIP=rt24' > "${_bsp_dir}/.esos_top.config"
+  touch "${_bsp_dir}/rtconfig.h"
+
+  # # Fix toolchain prefix: riscv64-unknown-elf- -> riscv64-elf-
+  # find . -name 'rtconfig.py' -exec \
+  #   sed -i "s|riscv64-unknown-elf-|riscv64-elf-|g" {} +
+
+  # # GCC multilib does not recognize zifencei extension (falls back to rv32 libgcc causing relocation overflow).
+  # # Source already has rv64imafdczifencei (required for fence.i instruction), cannot remove.
+  # # Solution: explicitly specify rv64 multilib path in LFLAGS with -B (libgcc search) and -L (libc search).
+  # local _gcc_ver
+  # _gcc_ver=$(riscv64-elf-gcc -dumpversion)
+  # find . -name 'rtconfig.py' -exec \
+  #   sed -i "/LFLAGS.*-nostartfiles/s|-nostartfiles|-B/usr/lib/gcc/riscv64-elf/${_gcc_ver}/rv64imafdc/lp64d/ -L/usr/riscv64-elf/lib/rv64imafdc/lp64d -nostartfiles|" {} +
+}
+
+build() {
+  cd "${srcdir}/esos"
+
+  # Aligned with debian/rules override_dh_auto_build
+  export TOP_DIR="${PWD}"
+  export TOP_BSP_DIR="${TOP_DIR}/bsp/spacemit"
+  export TOP_ESOS_BASE_DEFCONF="${TOP_BSP_DIR}/.esos_top.config"
+  export TOP_CROSS_COMPILE=riscv64-unknown-elf-
+  export RTT_EXEC_PATH=/usr/bin
+  export TOP_OUTPUT_DIR="${TOP_DIR}/output/esos"
+
+  "${TOP_DIR}/build_top.sh"
+}
+
+package() {
+  cd "${srcdir}/esos"
+
+  local _libdir="${pkgdir}/usr/lib/esos"
+
+  # ---------- Install ESOS firmware artifacts (aligned with bianbu-esos.install) ----------
+  install -Dm644 output/esos/esos.itb          "${_libdir}/esos.itb"
+  install -Dm644 output/esos/rt24_os0_rcpu.elf "${_libdir}/rt24_os0_rcpu.elf"
+  install -Dm644 output/esos/rt24_os1_rcpu.elf "${_libdir}/rt24_os1_rcpu.elf"
+
+  # ---------- dracut module (include elf firmware in initramfs) ----------
+  install -Dm755 "${startdir}/module-setup.sh" \
+    "${pkgdir}/usr/lib/dracut/modules.d/99esos/module-setup.sh"
+  # Place elf firmware in dracut module directory for module-setup.sh to reference
+  install -Dm644 output/esos/rt24_os0_rcpu.elf \
+    "${pkgdir}/usr/lib/dracut/modules.d/99esos/rt24_os0_rcpu.elf"
+  install -Dm644 output/esos/rt24_os1_rcpu.elf \
+    "${pkgdir}/usr/lib/dracut/modules.d/99esos/rt24_os1_rcpu.elf"
+
+  # ---------- mkinitcpio hook (include elf firmware in initramfs) ----------
+  install -Dm755 "${startdir}/esos-hook" \
+    "${pkgdir}/usr/lib/initcpio/hooks/esos"
+  install -Dm644 "${startdir}/esos-install" \
+    "${pkgdir}/usr/lib/initcpio/install/esos"
+
+  # ---------- Post-install notice ----------
+  echo ":: ESOS firmware installed to /usr/lib/esos/"
+  echo ":: Rebuild initramfs (mkinitcpio -P or dracut -f) to include firmware."
+}

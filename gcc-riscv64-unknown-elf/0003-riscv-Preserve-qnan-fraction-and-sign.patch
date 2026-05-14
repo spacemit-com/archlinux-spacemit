@@ -1,0 +1,29 @@
+From 27d89530545a6972cf6f624a841d455e3e89d7b3 Mon Sep 17 00:00:00 2001
+From: Keith Packard <keithp@keithp.com>
+Date: Sat, 20 Jul 2024 10:29:45 -0700
+Subject: [PATCH 3/3] riscv: Preserve qnan fraction and sign
+
+When converting nan values, preserve the fraction and sign bits like
+every other architecture.
+
+Signed-off-by: Keith Packard <keithp@keithp.com>
+---
+ libgcc/config/riscv/sfp-machine.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libgcc/config/riscv/sfp-machine.h b/libgcc/config/riscv/sfp-machine.h
+index 0ad97081e..a435cfb2c 100644
+--- a/libgcc/config/riscv/sfp-machine.h
++++ b/libgcc/config/riscv/sfp-machine.h
+@@ -87,7 +87,7 @@ typedef int __gcc_CMPtype __attribute__ ((mode (__libgcc_cmp_return__)));
+ #define _FP_NANSIGN_D		0
+ #define _FP_NANSIGN_Q		0
+ 
+-#define _FP_KEEPNANFRACP 0
++#define _FP_KEEPNANFRACP 1
+ #define _FP_QNANNEGATEDP 0
+ 
+ #define _FP_CHOOSENAN(fs, wc, R, X, Y, OP)	\
+-- 
+2.45.2
+

@@ -1,0 +1,60 @@
+_target=riscv64-unknown-elf
+
+pkgname=libnewlib-${_target}
+pkgver=4.6.0.20260123
+pkgrel=1
+pkgdesc='Newlib C library for bare-metal RISC-V (riscv64-unknown-elf)'
+arch=('x86_64' 'riscv64')
+url='https://sourceware.org/newlib/'
+license=('custom')
+depends=()
+makedepends=(
+	'gcc-riscv64-unknown-elf'
+	'binutils-riscv64-unknown-elf'
+	'texinfo'
+	'dejagnu'
+	'xz'
+	'patchutils'
+	'perl-rename'
+)
+options=('!strip' 'staticlibs')
+source=(
+	"https://sourceware.org/pub/newlib/newlib-${pkgver}.tar.gz"
+)
+sha256sums=(
+	'SKIP'
+)
+
+prepare() {
+	cd "${srcdir}/newlib-${pkgver}"
+}
+
+build() {
+	cd "${srcdir}"
+
+	rm -rf build
+	mkdir -p build
+	cd build
+
+	export CFLAGS_FOR_TARGET='-Os -mcmodel=medany -march=rv64imafdc -mabi=lp64d'
+	export CXXFLAGS_FOR_TARGET='-Os -mcmodel=medany -march=rv64imafdc -mabi=lp64d'
+	export CFLAGS="${CFLAGS_FOR_TARGET}"
+
+	"${srcdir}/newlib-${pkgver}/configure" \
+		--target="${_target}" \
+		--prefix=/usr \
+		--libdir=/usr/${_target}/lib \
+		--disable-newlib-supplied-syscalls \
+		--disable-nls \
+		--enable-newlib-io-long-long \
+		--enable-newlib-register-fini
+
+	make
+}
+
+package() {
+	cd "${srcdir}/build"
+	make DESTDIR="${pkgdir}" install
+	rm -rf "${pkgdir}/usr/share/info" || true
+}
+

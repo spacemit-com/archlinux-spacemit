@@ -1,0 +1,259 @@
+# Maintainer: Laurent Carlier <lordheavym@gmail.com>
+# Maintainer: Felix Yan <felixonmars@archlinux.org>
+# Maintainer: Jan Alexander Steffens (heftig) <heftig@archlinux.org>
+# Contributor: Jan de Groot <jgc@archlinux.org>
+# Contributor: Andreas Radke <andyrtr@archlinux.org>
+
+pkgbase=mesa
+_tag=k3-br-v1.0.0
+pkgname=(
+  'mesa'
+  'vulkan-mesa-layers'
+  'vulkan-swrast'
+)
+pkgver=24.0.1
+pkgrel=1
+epoch=1
+pkgdesc="An open-source implementation of the OpenGL specification"
+url="https://www.mesa3d.org/"
+arch=('riscv64')
+license=("MIT AND BSD-3-Clause AND SGI-B-2.0")
+makedepends=(
+  'clang'
+  'expat'
+  'libdrm'
+  'libelf'
+  'libglvnd'
+  'libunwind'
+  'libva'
+  'libvdpau'
+  'libx11'
+  'libxdamage'
+  'libxml2'
+  'libxrandr'
+  'libxshmfence'
+  'libxxf86vm'
+  'llvm'
+  'lm_sensors'
+  'rust'
+  'spirv-llvm-translator'
+  'spirv-tools'
+  'systemd'
+  'vulkan-icd-loader'
+  'wayland'
+  'xcb-util-keysyms'
+  'zstd'
+
+  # shared between mesa and lib32-mesa
+  'clang'
+  'cmake'
+  'elfutils'
+  'glslang'
+  'libclc'
+  'meson'
+  'python-packaging'
+  'python-mako'
+  'python-ply'
+  'rust-bindgen'
+  'wayland-protocols'
+  'xorgproto'
+
+  # valgrind deps
+  'valgrind'
+
+)
+
+source=("git+https://github.com/spacemit-com/mesa.git#tag=${_tag}")
+sha256sums=(SKIP)
+b2sums=(SKIP)
+
+validpgpkeys=(
+  946D09B5E4C9845E63075FF1D961C596A7203456 # Andres Gomez <tanty@igalia.com>
+  71C4B75620BC75708B4BDB254C95FAAB3EB073EC # Dylan Baker <dylan@pnwbakers.com>
+  8703B6700E7EE06D7A39B8D6EDAE37B02CEB490D # Emil Velikov <emil.l.velikov@gmail.com>
+  57551DE15B968F6341C248F68D8E31AFC32428A6 # Eric Engestrom <eric@engestrom.ch>
+  A5CC9FEC93F2F837CB044912336909B6B25FADFA # Juan A. Suarez Romero <jasuarez@igalia.com>
+  E3E8F480C52ADD73B278EE78E1ECBE07D7D70895 # Juan Antonio Suárez Romero (Igalia, S.L.) <jasuarez@igalia.com>
+)
+
+prepare() {
+
+  if [ -d "$srcdir/mesa" ]; then
+    cd "$srcdir/mesa"
+  elif [ -d "$srcdir/mesa-$pkgver" ]; then
+    cd "$srcdir/mesa-$pkgver"
+  else
+    echo "Error: Mesa source directory not found"
+    return 1
+  fi
+
+  # Include package release in version string so Chromium invalidates
+  # its GPU cache; otherwise it can cause pages to render incorrectly.
+  # https://bugs.launchpad.net/ubuntu/+source/chromium-browser/+bug/2020604
+  echo "$pkgver-arch$epoch.$pkgrel" >VERSION
+}
+
+build() {
+  local meson_options=(
+    -D android-libbacktrace=disabled
+    -D b_ndebug=true
+    -D dri3=enabled
+    -D egl=enabled
+    -D gallium-drivers=swrast,r600,pvr,zink
+    -D gallium-extra-hud=false
+    -D gallium-nine=false
+    -D gallium-omx=disabled
+    -D gallium-opencl=disabled
+    -D gallium-rusticl=false
+    -D gallium-va=disabled
+    -D gallium-vdpau=disabled
+    -D gallium-xa=disabled
+    -D gbm=enabled
+    -D gles1=disabled
+    -D gles2=enabled
+    -D glvnd=true
+    -D glx=dri
+    -D intel-clc=disabled
+    -D libunwind=disabled
+    -D llvm=enabled
+    -D lmsensors=disabled
+    -D microsoft-clc=disabled
+    -D osmesa=true
+    -D platforms=x11,wayland
+    -D rust_std=2021
+    -D shared-glapi=enabled
+    -D valgrind=enabled
+    -D video-codecs=''
+    -D vulkan-drivers=swrast,pvr
+    -D vulkan-layers=device-select,overlay
+  )
+
+  # Build only minimal debug info to reduce size
+  CFLAGS+=' -g1'
+  CXXFLAGS+=' -g1'
+
+  local mesa_src_dir
+  if [ -d "$srcdir/mesa" ]; then
+    mesa_src_dir="mesa"
+  elif [ -d "$srcdir/mesa-$pkgver" ]; then
+    mesa_src_dir="mesa-$pkgver"
+  else
+    echo "Error: Mesa source directory not found"
+    return 1
+  fi
+
+  echo "Using source directory: $mesa_src_dir"
+  arch-meson "$mesa_src_dir" build "${meson_options[@]}"
+
+  meson configure build # Print config
+  meson compile -C build
+
+  # fake installation to be seperated into packages
+  # outside of fakeroot but mesa doesn't need to chown/mod
+  DESTDIR="${srcdir}/fakeinstall" meson install -C build
+}
+
+_install() {
+  local src f dir
+  for src; do
+    f="${src#fakeinstall/}"
+    dir="${pkgdir}/${f%/*}"
+    install -m755 -d "${dir}"
+    mv -v "${src}" "${dir}/"
+  done
+}
+
+_libdir=usr/lib
+
+package_vulkan-mesa-layers() {
+  pkgdesc="Mesa's Vulkan layers"
+  depends=(
+    'libdrm'
+    'libxcb'
+    'wayland'
+
+    'python'
+  )
+  conflicts=('vulkan-mesa-layer')
+  replaces=('vulkan-mesa-layer')
+
+  _install fakeinstall/usr/share/vulkan/explicit_layer.d
+  _install fakeinstall/usr/share/vulkan/implicit_layer.d
+  _install fakeinstall/$_libdir/libVkLayer_*.so
+  _install fakeinstall/usr/bin/mesa-overlay-control.py
+}
+
+package_vulkan-swrast() {
+  pkgdesc="Vulkan software rasteriser driver"
+  depends=(
+    'libdrm'
+    'libunwind'
+    'libx11'
+    'libxshmfence'
+    'llvm-libs'
+    'systemd'
+    'wayland'
+    'xcb-util-keysyms'
+    'zstd'
+  )
+  optdepends=('vulkan-mesa-layers: additional vulkan layers')
+  conflicts=('vulkan-mesa')
+  replaces=('vulkan-mesa')
+  provides=('vulkan-driver')
+
+  _install fakeinstall/usr/share/vulkan/icd.d/lvp_icd*.json
+  _install fakeinstall/$_libdir/libvulkan_lvp.so
+}
+
+package_mesa() {
+  depends=(
+    'libdrm'
+    'libelf'
+    'libglvnd'
+    'libunwind'
+    'libxdamage'
+    'libxshmfence'
+    'libxxf86vm'
+    'llvm-libs'
+    'lm_sensors'
+    'vulkan-icd-loader'
+    'wayland'
+    'zstd'
+
+    'libomxil-bellagio'
+  )
+  optdepends=(
+    'opengl-man-pages: for the OpenGL API man pages'
+  )
+  provides=(
+    'mesa-libgl'
+    'opengl-driver'
+  )
+  conflicts=('mesa-libgl')
+  replaces=('mesa-libgl')
+
+  _install fakeinstall/usr/share/drirc.d/00-mesa-defaults.conf
+  _install fakeinstall/usr/share/glvnd/egl_vendor.d/50_mesa.json
+
+  # ati-dri, nouveau-dri, intel-dri, svga-dri, swrast, swr
+  _install fakeinstall/$_libdir/dri/*_dri.so
+
+  _install fakeinstall/$_libdir/lib{gbm,glapi}.so*
+  _install fakeinstall/$_libdir/libOSMesa.so*
+  _install fakeinstall/$_libdir/libpvr_mesa_wsi.so*
+
+  _install fakeinstall/usr/include
+  _install fakeinstall/$_libdir/pkgconfig
+
+  # libglvnd support
+  _install fakeinstall/$_libdir/libGLX_mesa.so*
+  _install fakeinstall/$_libdir/libEGL_mesa.so*
+
+  # indirect rendering
+  ln -sr "$pkgdir"/$_libdir/libGLX_{mesa,indirect}.so.0
+
+  rm fakeinstall/usr/share/mesa/wayland-drm.xml
+  rm fakeinstall/usr/share/pkgconfig/wayland-drm.pc
+  # make sure there are no files left to install
+  find fakeinstall -depth -type d -empty -exec rmdir {} +
+}

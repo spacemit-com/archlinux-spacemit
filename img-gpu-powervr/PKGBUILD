@@ -1,0 +1,104 @@
+# Maintainer: Your Name <your.email@example.com>
+# Based on Bianbu Linux img-gpu-powervr package
+
+pkgname=img-gpu-powervr
+_tag=k3-br-v1.0.0
+pkgver=${_tag//-/.}
+pkgrel=1
+pkgdesc="Imagination PowerVR GPU library for K1 RISC-V (precompiled binaries)"
+arch=('riscv64')
+url="https://github.com/spacemit-com/img-gpu-powervr"
+license=('BSD-3-Clause')
+depends=(
+    'libdrm'
+    'wayland'
+    'libglvnd'
+)
+provides=(
+    'powervr-driver'
+    'vulkan-powervr'
+    'opengl-driver'
+    'opencl-driver'
+)
+
+options=('!strip' '!emptydirs')
+
+source=("git+https://github.com/spacemit-com/img-gpu-powervr.git#tag=${_tag}")
+sha256sums=('SKIP')
+
+
+prepare() {
+    :
+}
+
+build() {
+    :
+}
+
+package() {
+    local _target="${srcdir}/${pkgname}/target"
+
+    if [ ! -d "$_target" ]; then
+        echo "Error: target directory not found: $_target"
+        return 1
+    fi
+
+    echo "Installing from git repo target/ directory"
+
+    # Install firmware (target/lib/firmware -> /usr/lib/firmware)
+    if [ -d "$_target/lib/firmware" ]; then
+        install -dm755 "${pkgdir}/usr/lib/firmware"
+        cp -r "$_target/lib/firmware/"* "${pkgdir}/usr/lib/firmware/"
+    fi
+
+    # Install usr (target/usr -> /usr)
+    [ -d "$_target/usr" ] && cp -r "$_target/usr" "${pkgdir}/"
+
+    # Install etc (target/etc -> /etc)
+    [ -d "$_target/etc" ] && cp -r "$_target/etc" "${pkgdir}/"
+
+    # Remove loader libs that conflict with libglvnd / vulkan-icd-loader
+    # PowerVR actual implementations are libGLESv2_PVR_MESA.so and libvulkan.so.1.3.280
+    # System loads them via libglvnd dispatch and vulkan ICD mechanism
+    rm -f "${pkgdir}/usr/lib/libGLESv1.so"
+    rm -f "${pkgdir}/usr/lib/libGLESv1.so.1"
+    rm -f "${pkgdir}/usr/lib/libGLESv2.so"
+    rm -f "${pkgdir}/usr/lib/libvulkan.so"
+    rm -f "${pkgdir}/usr/lib/libvulkan.so.1"
+
+    find "${pkgdir}/usr/lib" -type f -name "*.so*" -exec chmod 755 {} \;
+    find "${pkgdir}/usr/lib/firmware" -type f -exec chmod 644 {} \; 2>/dev/null || true
+
+    # Create environment config file
+    install -dm755 "${pkgdir}/etc/profile.d"
+    cat > "${pkgdir}/etc/profile.d/powervr.sh" << 'ENVEOF'
+# PowerVR GPU environment variables
+export COGL_DRIVER=gles2
+export GSK_RENDERER=gl
+export GDK_GL=gles
+export SDL_VIDEODRIVER=wayland
+export MESA_LOADER_DRIVER_OVERRIDE=pvr
+export SAL_DISABLEGL=1
+export SAL_ENABLESKIA=1
+
+# Vulkan and OpenGL paths
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/powervr_icd.json
+export __EGL_VENDOR_LIBRARY_DIRS=/usr/share/glvnd/egl_vendor.d
+export LIBGL_DRIVERS_PATH=/usr/lib/dri
+ENVEOF
+
+    chmod 644 "${pkgdir}/etc/profile.d/powervr.sh"
+
+    # Create license file
+    install -dm755 "${pkgdir}/usr/share/licenses/${pkgname}"
+    cat > "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" << 'LICEOF'
+Imagination Technologies PowerVR GPU Driver
+Proprietary License
+
+This is proprietary software provided by Imagination Technologies.
+Redistribution and use are subject to the terms and conditions
+provided by Imagination Technologies.
+
+For more information, visit: https://www.imaginationtech.com/
+LICEOF
+}

@@ -1,0 +1,52 @@
+pkgname=opensbi-spacemit
+_tag=k3-br-v1.0.0
+pkgver=${_tag//-/.}
+pkgrel=1
+pkgdesc="RISC-V OpenSBI firmware for Spacemit (generic platform)"
+arch=('riscv64')
+url="https://github.com/spacemit-com/opensbi"
+license=('BSD')
+makedepends=('git' 'python' 'uboot-tools' 'dtc')
+install=opensbi-spacemit.install
+source=("opensbi::git+https://github.com/spacemit-com/opensbi.git#tag=${_tag}")
+sha256sums=('SKIP')
+
+_local_dir="/home/bianbu/opensbi-spacemit/opensbi"
+prepare() {
+	local _srcdir_local="${srcdir}/opensbi"
+
+	if [ -d "$_local_dir" ]; then
+	echo "Using local directory: $_local_dir"
+		rm -rf "$_srcdir_local"
+		ln -s "$_local_dir" "$_srcdir_local"
+	else
+		echo "Local directory not found: $_local_dir"
+	fi
+}
+
+
+pkgver() {
+    cd "${srcdir}/opensbi"
+    git describe --tags --long --abbrev=7 2>/dev/null \
+        | sed 's/^v//; s/-/.r/; s/-/./g' \
+        || printf '0.9.r0.g%s' "$(git rev-parse --short HEAD)"
+}
+
+build() {
+	cd "${srcdir}/opensbi"
+	make \
+		V=1 \
+		PLATFORM_DEFCONFIG=k3_defconfig \
+		PLATFORM=generic
+}
+
+package() {
+	cd "${srcdir}/opensbi"
+
+	install -d "${pkgdir}/usr/lib/riscv64-linux-gnu/opensbi/generic"
+	install -m644 build/platform/generic/firmware/fw_*.itb \
+		"${pkgdir}/usr/lib/riscv64-linux-gnu/opensbi/generic/"
+
+	install -d "${pkgdir}/usr/share/licenses/${pkgname}"
+	install -m644 COPYING.BSD "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

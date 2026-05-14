@@ -1,0 +1,7 @@
+#!/usr/bin/ash
+# mkinitcpio hook for ESOS firmware
+
+run_hook() {
+  # Nothing to do at boot; firmware is bundled into initramfs by install script.
+  return 0
+}
