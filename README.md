@@ -15,7 +15,7 @@ Toolset for building ArchLinux RISC-V system images for the SpacemiT K3 platform
 ├── opensbi-spacemit/              # OpenSBI firmware
 ├── u-boot-spacemit/               # U-Boot bootloader
 ├── esos-spacemit/                 # ESOS
-├── mesa/                          # Mesa 3D graphics library
+├── mesa-pvr/                      # Mesa 3D graphics library (PowerVR patched)
 └── img-gpu-powervr/               # PowerVR GPU driver
 ```
 
@@ -108,7 +108,7 @@ cd esos-spacemit && makepkg -si
 ### Graphics Driver
 
 ```bash
-cd mesa && makepkg -si
+cd mesa-pvr && makepkg -si
 cd img-gpu-powervr && makepkg -si
 ```
 
@@ -135,7 +135,7 @@ sync
 - Password: `root`
 - Network: NetworkManager (enabled)
 - Kernel: linux-6.18
-- Graphics: Mesa + PowerVR driver
+- Graphics: mesa-pvr (PowerVR patched Mesa, GLVND) + img-gpu-powervr (PowerVR UMD)
 
 ## Notes
 

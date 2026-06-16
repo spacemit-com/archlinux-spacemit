@@ -144,7 +144,11 @@ pacman -S --noconfirm \
   opensbi-spacemit \
   u-boot-spacemit \
   u-boot-tools \
-  mesa=1:24.0.1-1 vulkan-mesa-layers=1:24.0.1-1 \
+  libegl-pvr0 \
+  libglapi-pvr \
+  libgbm1-pvr \
+  libgl1-pvr-dri \
+  pvr-vulkan-drivers \
   img-gpu-powervr
 
 if [ -f /usr/share/factory/etc/vconsole.conf ]; then

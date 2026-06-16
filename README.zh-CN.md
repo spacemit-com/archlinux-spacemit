@@ -15,7 +15,7 @@
 ├── opensbi-spacemit/              # OpenSBI 固件
 ├── u-boot-spacemit/               # U-Boot 引导加载器
 ├── esos-spacemit/                 # ESOS
-├── mesa/                          # Mesa 3D 图形库
+├── mesa-pvr/                      # Mesa 3D 图形库（PowerVR 补丁版本）
 └── img-gpu-powervr/               # PowerVR GPU 驱动
 ```
 
@@ -108,7 +108,7 @@ cd esos-spacemit && makepkg -si
 ### 图形驱动
 
 ```bash
-cd mesa && makepkg -si
+cd mesa-pvr && makepkg -si
 cd img-gpu-powervr && makepkg -si
 ```
 
@@ -135,7 +135,7 @@ sync
 - 密码: `root`
 - 网络: NetworkManager（已启用）
 - 内核: linux-6.18
-- 图形: Mesa + PowerVR 驱动
+- 图形: mesa-pvr（PowerVR 补丁版 Mesa，GLVND）+ img-gpu-powervr（PowerVR 用户层驱动）
 
 ## 注意事项
 

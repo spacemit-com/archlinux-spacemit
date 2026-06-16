@@ -1,0 +1,211 @@
+# Maintainer: Laurent Carlier <lordheavym@gmail.com>
+# Maintainer: Felix Yan <felixonmars@archlinux.org>
+# Contributor: Jan de Groot <jgc@archlinux.org>
+# Contributor: Andreas Radke <andyrtr@archlinux.org>
+
+pkgbase=mesa-pvr
+_tag=k3-br-v1.0.0
+pkgname=(
+  'libgl1-pvr-dri'
+  'libegl-pvr0'
+  'libglapi-pvr'
+  'libgbm1-pvr'
+  'pvr-vulkan-drivers'
+)
+pkgver=24.0.1
+pkgrel=1
+epoch=1
+pkgdesc="Mesa PVR - OpenGL/Vulkan drivers for Imagination PowerVR GPUs"
+url="https://www.mesa3d.org/"
+arch=('riscv64')
+license=('MIT AND BSD-3-Clause AND SGI-B-2.0')
+makedepends=(
+  'expat'
+  'libdrm'
+  'libelf'
+  'libglvnd'
+  'libx11'
+  'libxdamage'
+  'libxml2'
+  'libxrandr'
+  'libxshmfence'
+  'libxxf86vm'
+  'lm_sensors'
+  'systemd'
+  'vulkan-icd-loader'
+  'wayland'
+  'zstd'
+  'libclc'
+  'cmake'
+  'elfutils'
+  'glslang'
+  'meson'
+  'python-packaging'
+  'python-mako'
+  'python-ply'
+  'wayland-protocols'
+  'xorgproto'
+)
+source=(
+  "git+https://github.com/spacemit-com/mesa.git#tag=${_tag}"
+)
+sha256sums=('SKIP')
+b2sums=('SKIP')
+
+prepare() {
+  cd "$srcdir/mesa"
+
+  # Reset to clean tag state before applying patches
+  git checkout -- .
+  git clean -xfd
+
+  # Apply patches from patches/ directory
+  local patch
+  for patch in "$startdir"/patches/*.patch; do
+    [ -f "$patch" ] || continue
+    echo "Applying patch $(basename $patch)..."
+    git apply --check "$patch" 2>/dev/null && git apply "$patch" || \
+      patch --forward -Np1 < "$patch" || true
+  done
+
+  # Include package release in version string so Chromium invalidates
+  # its GPU cache; otherwise it can cause pages to render incorrectly.
+  # https://bugs.launchpad.net/ubuntu/+source/chromium-browser/+bug/2020604
+  echo "$pkgver-arch$epoch.$pkgrel" >VERSION
+}
+
+build() {
+  local meson_options=(
+    -D android-libbacktrace=disabled
+    -D b_ndebug=true
+    -D dri3=enabled
+    -D egl=enabled
+    -D gallium-drivers=pvr,zink
+    -D gallium-extra-hud=false
+    -D gallium-nine=false
+    -D gallium-omx=disabled
+    -D gallium-opencl=disabled
+    -D libunwind=disabled
+    -D gallium-rusticl=false
+    -D gallium-va=disabled
+    -D gallium-xa=disabled
+    -D gallium-vdpau=disabled
+    -D gallium-pvr-alias=spacemit
+    -D gbm=enabled
+    -D opengl=true
+    -D gles1=enabled
+    -D gles2=enabled
+    -D glvnd=true
+    -D glvnd-vendor-name=pvr
+    -D glx=dri
+    -D intel-clc=disabled
+    -D microsoft-clc=disabled
+    -D lmsensors=disabled
+    -D dri-drivers-path=/usr/lib/pvr-dri
+    -D dri-search-path=/usr/lib/pvr-dri:/usr/lib/dri
+    -D llvm=disabled
+    -D platforms=wayland,x11
+    -D shared-glapi=enabled
+    -D video-codecs=''
+    -D valgrind=disabled
+    -D vulkan-drivers=pvr
+  )
+
+  CFLAGS+=' -g1'
+  CXXFLAGS+=' -g1'
+
+  arch-meson mesa build "${meson_options[@]}"
+
+  meson configure build # Print config
+  meson compile -C build
+
+  DESTDIR="${srcdir}/fakeinstall" meson install -C build
+}
+
+_install() {
+  local src f dir
+  for src; do
+    f="${src#fakeinstall/}"
+    dir="${pkgdir}/${f%/*}"
+    install -m755 -d "${dir}"
+    mv -v "${src}" "${dir}/"
+  done
+}
+
+_libdir=usr/lib
+
+package_libgl1-pvr-dri() {
+  pkgdesc="OpenGL DRI modules for Imagination PVR GPU"
+  depends=(
+    'libdrm'
+    'libelf'
+    'libglvnd'
+    'libxshmfence'
+    'vulkan-icd-loader'
+    'wayland'
+    'zstd'
+  )
+
+  _install fakeinstall/$_libdir/pvr-dri/*
+  _install fakeinstall/$_libdir/libGLX_pvr.so*
+
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+}
+
+package_libegl-pvr0() {
+  pkgdesc="EGL vendor library for Imagination PVR GPU"
+  depends=(
+    'libdrm'
+    'libglvnd'
+    'libgbm1-pvr'
+  )
+  provides=('libegl-vendor-pvr')
+
+  _install fakeinstall/usr/share/glvnd/egl_vendor.d/*
+  _install fakeinstall/$_libdir/libEGL_pvr.so*
+
+  # Adjust GLVND EGL vendor priority to 40 (higher priority than system mesa's 50)
+  mv "${pkgdir}/usr/share/glvnd/egl_vendor.d/50_pvr.json" \
+     "${pkgdir}/usr/share/glvnd/egl_vendor.d/40_pvr.json"
+
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+}
+
+package_libglapi-pvr() {
+  pkgdesc="GL API shared library for PVR mesa"
+  depends=(
+    'glibc'
+  )
+
+  _install fakeinstall/$_libdir/libpvrglapi.so*
+
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+}
+
+package_libgbm1-pvr() {
+  pkgdesc="GBM backend plugin for Imagination PVR GPU"
+  depends=(
+    'libdrm'
+  )
+
+  _install fakeinstall/$_libdir/gbm/*
+
+  # Create GBM backend alias symlink for spacemit
+  ln -sfv pvr_gbm.so "${pkgdir}/$_libdir/gbm/spacemit_gbm.so"
+
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+}
+
+package_pvr-vulkan-drivers() {
+  pkgdesc="Mesa Vulkan WSI library for Imagination PVR GPU"
+  depends=(
+    'libdrm'
+    'vulkan-icd-loader'
+    'wayland'
+  )
+  provides=('vulkan-driver')
+
+  _install fakeinstall/$_libdir/libpvr_mesa_wsi.so
+
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+}
