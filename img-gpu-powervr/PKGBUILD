@@ -4,7 +4,7 @@
 pkgname=img-gpu-powervr
 _tag=k3-br-v1.0.0
 pkgver=${_tag//-/.}
-pkgrel=1
+pkgrel=2
 pkgdesc="Imagination PowerVR GPU library for K1 RISC-V (precompiled binaries)"
 arch=('riscv64')
 url="https://github.com/spacemit-com/img-gpu-powervr"
@@ -75,16 +75,11 @@ package() {
 # PowerVR GPU environment variables
 export COGL_DRIVER=gles2
 export GSK_RENDERER=gl
+export GSK_DISABLE=mipmap
 export GDK_GL=gles
 export SDL_VIDEODRIVER=wayland
-export MESA_LOADER_DRIVER_OVERRIDE=pvr
 export SAL_DISABLEGL=1
 export SAL_ENABLESKIA=1
-
-# Vulkan and OpenGL paths
-export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/powervr_icd.json
-export __EGL_VENDOR_LIBRARY_DIRS=/usr/share/glvnd/egl_vendor.d
-export LIBGL_DRIVERS_PATH=/usr/lib/dri
 ENVEOF
 
     chmod 644 "${pkgdir}/etc/profile.d/powervr.sh"
