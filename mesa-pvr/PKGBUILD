@@ -47,13 +47,13 @@ makedepends=(
   'xorgproto'
 )
 source=(
-  "git+https://github.com/spacemit-com/mesa.git#tag=${_tag}"
+  "git+https://github.com/spacemit-com/${pkgbase}.git#tag=${_tag}"
 )
 sha256sums=('SKIP')
 b2sums=('SKIP')
 
 prepare() {
-  cd "$srcdir/mesa"
+  cd "$srcdir/$pkgbase"
 
   # Reset to clean tag state before applying patches
   git checkout -- .
@@ -114,7 +114,7 @@ build() {
   CFLAGS+=' -g1'
   CXXFLAGS+=' -g1'
 
-  arch-meson mesa build "${meson_options[@]}"
+  arch-meson $pkgbase build "${meson_options[@]}"
 
   meson configure build # Print config
   meson compile -C build
@@ -149,7 +149,7 @@ package_libgl1-pvr-dri() {
   _install fakeinstall/$_libdir/pvr-dri/*
   _install fakeinstall/$_libdir/libGLX_pvr.so*
 
-  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/${pkgbase}/docs/license.rst"
 }
 
 package_libegl-pvr0() {
@@ -168,7 +168,7 @@ package_libegl-pvr0() {
   mv "${pkgdir}/usr/share/glvnd/egl_vendor.d/50_pvr.json" \
      "${pkgdir}/usr/share/glvnd/egl_vendor.d/40_pvr.json"
 
-  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/${pkgbase}/docs/license.rst"
 }
 
 package_libglapi-pvr() {
@@ -179,7 +179,7 @@ package_libglapi-pvr() {
 
   _install fakeinstall/$_libdir/libpvrglapi.so*
 
-  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/${pkgbase}/docs/license.rst"
 }
 
 package_libgbm1-pvr() {
@@ -193,7 +193,7 @@ package_libgbm1-pvr() {
   # Create GBM backend alias symlink for spacemit
   ln -sfv pvr_gbm.so "${pkgdir}/$_libdir/gbm/spacemit_gbm.so"
 
-  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/${pkgbase}/docs/license.rst"
 }
 
 package_pvr-vulkan-drivers() {
@@ -207,5 +207,5 @@ package_pvr-vulkan-drivers() {
 
   _install fakeinstall/$_libdir/libpvr_mesa_wsi.so
 
-  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/mesa/docs/license.rst"
+  install -m644 -Dt "${pkgdir}/usr/share/licenses/${pkgname}" "${srcdir}/${pkgbase}/docs/license.rst"
 }
